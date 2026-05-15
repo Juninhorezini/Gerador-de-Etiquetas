@@ -1,0 +1,334 @@
+import React, { useState, useEffect } from 'react';
+import { Printer, AlertCircle, CheckCircle2, Search, Loader2 } from 'lucide-react';
+
+// Função auxiliar para analisar CSV lidando com aspas
+function parseCSV(str) {
+  const arr = [];
+  let quote = false;
+  let row = 0;
+  let col = 0;
+  for (let c = 0; c < str.length; c++) {
+    let cc = str[c], nc = str[c + 1];
+    arr[row] = arr[row] || [];
+    arr[row][col] = arr[row][col] || '';
+    if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
+    if (cc === '"') { quote = !quote; continue; }
+    if (cc === ',' && !quote) { ++col; continue; }
+    if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; }
+    if (cc === '\n' && !quote) { ++row; col = 0; continue; }
+    if (cc === '\r' && !quote) { ++row; col = 0; continue; }
+    arr[row][col] += cc;
+  }
+  return arr;
+}
+
+const LabelComponent = ({ product, idSuffix, isPreview = false, barcodeLoaded }) => {
+  const [dateStr, setDateStr] = useState('');
+
+  // Define a data/hora no momento da renderização
+  useEffect(() => {
+    const pad = (n) => n.toString().padStart(2, '0');
+    const now = new Date();
+    setDateStr(`${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`);
+  }, []);
+
+  // Gera o código de barras
+  useEffect(() => {
+    if (barcodeLoaded && window.JsBarcode && product?.ean) {
+      try {
+        window.JsBarcode(`#barcode-${idSuffix}`, product.ean, {
+          format: "EAN13",
+          displayValue: true,
+          fontSize: 18, // Aumentado para melhor leitura
+          width: 2.4,   // Largura da barra aumentada para ocupar melhor o espaço
+          height: 60,   // Altura aumentada para visibilidade total
+          margin: 0,
+          textMargin: 2,
+          font: "monospace"
+        });
+      } catch (e) {
+        window.JsBarcode(`#barcode-${idSuffix}`, product.ean, {
+          format: "CODE128",
+          displayValue: true,
+          fontSize: 16,
+          width: 2.0,
+          height: 60,
+          margin: 0
+        });
+      }
+    }
+  }, [product, idSuffix, barcodeLoaded]);
+
+  if (!product) return null;
+
+  return (
+    <div 
+      className={`bg-white text-black flex items-center justify-between overflow-hidden box-border label-page ${isPreview ? 'mx-auto border shadow-sm' : ''}`}
+      style={{
+        width: '100mm', 
+        height: '35mm',
+        padding: '1mm 2mm', // Margens reduzidas drasticamente
+        ...(isPreview && { position: 'relative' })
+      }}
+    >
+      {/* Coluna de Textos - Ocupa o máximo de espaço possível à esquerda */}
+      <div className="flex flex-col justify-center h-full flex-1 pr-1 overflow-hidden">
+        <div style={{ 
+          fontFamily: "'VT323', monospace", 
+          fontSize: '32px', // Fonte Pack aumentada
+          lineHeight: '0.9', 
+          letterSpacing: '0.5px', 
+          marginBottom: '1px', 
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap'
+        }}>
+          PACK: {product.codigo}-{product.cor}
+        </div>
+        
+        <div style={{ 
+          fontFamily: 'sans-serif', 
+          fontSize: '14px', // Descrição aumentada
+          fontWeight: 'bold', 
+          lineHeight: '1.1', 
+          marginBottom: '2px', 
+          textTransform: 'uppercase', 
+          display: '-webkit-box',
+          WebkitLineClamp: '2',
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden'
+        }}>
+          {product.descricao}
+        </div>
+        
+        <div style={{ 
+          fontFamily: 'sans-serif', 
+          fontSize: '11px', 
+          lineHeight: '1', 
+          marginBottom: '2px', 
+          color: '#000' 
+        }}>
+          {dateStr}
+        </div>
+        
+        <div style={{ 
+          fontFamily: 'sans-serif', 
+          fontSize: '18px', // Quantidade aumentada
+          fontWeight: '900', 
+          lineHeight: '1' 
+        }}>
+          {product.quantidade} Unidades
+        </div>
+      </div>
+
+      {/* Coluna do Código de Barras - Posicionada na extremidade direita */}
+      <div className="flex flex-col justify-center items-end h-full">
+        <svg id={`barcode-${idSuffix}`} style={{ maxWidth: '45mm' }}></svg>
+      </div>
+    </div>
+  );
+};
+
+export default function App() {
+  const [codigo, setCodigo] = useState('');
+  const [cor, setCor] = useState('');
+  const [qtdPrint, setQtdPrint] = useState(1);
+  
+  const [sheetData, setSheetData] = useState([]);
+  const [loadingSheet, setLoadingSheet] = useState(true);
+  const [sheetError, setSheetError] = useState(null);
+  
+  const [foundProduct, setFoundProduct] = useState(null);
+  const [barcodeLoaded, setBarcodeLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!document.getElementById('font-vt323')) {
+      const link = document.createElement('link');
+      link.id = 'font-vt323';
+      link.href = 'https://fonts.googleapis.com/css2?family=VT323&display=swap';
+      link.rel = 'stylesheet';
+      document.head.appendChild(link);
+    }
+
+    if (!document.getElementById('jsbarcode-script')) {
+      const script = document.createElement('script');
+      script.id = 'jsbarcode-script';
+      script.src = 'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js';
+      script.async = true;
+      script.onload = () => setBarcodeLoaded(true);
+      document.head.appendChild(script);
+    } else {
+      setBarcodeLoaded(true);
+    }
+  }, []);
+
+  const fetchPlanilha = async () => {
+    setLoadingSheet(true);
+    setSheetError(null);
+    try {
+      const sheetId = "143XqITVYUF4oT571RbvSV4fo3kMIa9M81EuMQbyFUT0";
+      const gid = "1758851006";
+      const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+      
+      let response;
+      try {
+        response = await fetch(url);
+      } catch (networkError) {
+        throw new Error('Falha de rede (CORS). Verifique se a planilha está publicada na web.');
+      }
+
+      if (!response.ok) {
+        throw new Error(`Erro: ${response.status}`);
+      }
+
+      const text = await response.text();
+      if (text.trim().startsWith('<!DOCTYPE html>')) {
+        throw new Error('Planilha bloqueada. Publique-a na Web.');
+      }
+
+      const parsedData = parseCSV(text);
+      setSheetData(parsedData);
+    } catch (err) {
+      setSheetError(err.message || 'Erro ao carregar.');
+    } finally {
+      setLoadingSheet(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPlanilha();
+  }, []);
+
+  useEffect(() => {
+    if (!sheetData || sheetData.length <= 1) {
+      setFoundProduct(null);
+      return;
+    }
+    const codBusca = codigo.trim().toUpperCase();
+    const corBusca = cor.trim().toUpperCase();
+    if (!codBusca || !corBusca) {
+      setFoundProduct(null);
+      return;
+    }
+    const found = sheetData.slice(1).find(row => {
+      const rowCod = (row[1] || '').trim().toUpperCase();
+      const rowCor = (row[3] || '').trim().toUpperCase();
+      return rowCod === codBusca && rowCor === corBusca;
+    });
+
+    if (found) {
+      setFoundProduct({
+        ean: (found[0] || '').trim(),
+        codigo: (found[1] || '').trim(),
+        descricao: (found[2] || '').trim(),
+        cor: (found[3] || '').trim(),
+        quantidade: (found[4] || '').trim()
+      });
+    } else {
+      setFoundProduct(null);
+    }
+  }, [codigo, cor, sheetData]);
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100 p-4 md:p-8">
+      <style>
+        {`
+          @media screen {
+            .print-only { display: none !important; }
+          }
+          @media print {
+            body * { visibility: hidden; }
+            .print-only, .print-only * { visibility: visible; }
+            .print-only {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 100%;
+              margin: 0;
+              padding: 0;
+            }
+            @page {
+              size: 100mm 35mm;
+              margin: 0;
+            }
+            body { margin: 0; padding: 0; background: white; }
+            .label-page {
+              page-break-after: always;
+              page-break-inside: avoid;
+            }
+          }
+        `}
+      </style>
+
+      <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden print:hidden">
+        <div className="bg-blue-600 p-6 text-white flex items-center gap-3">
+          <Printer size={28} />
+          <h1 className="text-2xl font-bold">Gerador de Etiquetas Pack</h1>
+        </div>
+
+        <div className="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-6">
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+              <h2 className="text-sm font-semibold text-blue-800 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Search size={16} /> Dados de Busca
+              </h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Produto</label>
+                  <input type="text" value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Ex: LH061" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none uppercase font-bold" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cor</label>
+                  <input type="text" value={cor} onChange={(e) => setCor(e.target.value)} placeholder="Ex: 102" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none uppercase font-bold" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-4">Impressão</h2>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Qtd. Etiquetas</label>
+                <input type="number" min="1" value={qtdPrint} onChange={(e) => setQtdPrint(parseInt(e.target.value) || 1)} className="w-full md:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold" />
+              </div>
+              <button onClick={handlePrint} disabled={!foundProduct} className={`mt-6 w-full py-3 px-4 rounded-xl flex items-center justify-center gap-2 text-lg font-bold transition-all ${foundProduct ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}>
+                <Printer size={20} /> Imprimir Agora
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Preview (100x35mm)</h2>
+            <div className="flex-1 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center p-4 bg-gray-50/50 min-h-[250px]">
+              {loadingSheet ? (
+                <Loader2 className="animate-spin text-blue-500" size={32} />
+              ) : foundProduct ? (
+                <div className="w-full flex flex-col items-center animate-in fade-in zoom-in">
+                  <div className="mb-4 text-green-600 flex items-center gap-2 font-bold uppercase text-xs">
+                    <CheckCircle2 size={16} /> Sucesso: {foundProduct.codigo} localizado
+                  </div>
+                  <div className="shadow-2xl border border-gray-300 bg-white scale-110">
+                    <LabelComponent product={foundProduct} idSuffix="preview" isPreview={true} barcodeLoaded={barcodeLoaded} />
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center text-gray-400">
+                  <Search className="mx-auto mb-2 opacity-30" size={40} />
+                  <p className="text-sm font-medium">Aguardando busca...</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="print-only">
+        {foundProduct && Array.from({ length: qtdPrint }).map((_, i) => (
+          <LabelComponent key={i} product={foundProduct} idSuffix={`print-${i}`} barcodeLoaded={barcodeLoaded} />
+        ))}
+      </div>
+    </div>
+  );
+}

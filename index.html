@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gerador de Etiquetas Pack</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="app-header__inner">
+        <div class="app-title">
+          <div class="app-title__h1">Gerador de Etiquetas Pack</div>
+          <div class="app-title__sub">Cadastro, pré-visualização, impressão e exportação PDF</div>
+        </div>
+        <div class="app-actions">
+          <button id="btnPrint" class="btn btn--primary" type="button">Imprimir</button>
+          <button id="btnPdf" class="btn btn--secondary" type="button">Exportar PDF</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <section class="panel">
+        <div class="panel__section is-open">
+          <button class="panel__title" type="button">Busca</button>
+          <div class="panel__content">
+            <div class="panel__contentInner">
+              <div class="grid grid--2">
+                <label class="field">
+                  <span class="field__label">Produto</span>
+                  <input id="inpCodigoBusca" class="field__input" type="text" inputmode="latin" autocomplete="off" placeholder="Ex: LH061" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Cor</span>
+                  <input id="inpCorBusca" class="field__input" type="text" inputmode="latin" autocomplete="off" placeholder="Ex: 102" />
+                </label>
+              </div>
+              <div id="searchStatus" class="status status--muted">Digite Produto e Cor para localizar no cadastro (ou preencha manualmente).</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel__section is-open">
+          <button class="panel__title" type="button">Impressão</button>
+          <div class="panel__content">
+            <div class="panel__contentInner">
+              <div class="grid grid--2">
+                <label class="field">
+                  <span class="field__label">Quantidade de etiquetas</span>
+                  <input
+                    id="inpQtdPrint"
+                    class="field__input"
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    placeholder="Ex: 1"
+                    required
+                  />
+                </label>
+                <label class="field">
+                  <span class="field__label">Tamanho</span>
+                  <select id="selTamanho" class="field__input">
+                    <option value="100x35" selected>100 × 35 mm (Pack)</option>
+                    <option value="100x50">100 × 50 mm</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                </label>
+              </div>
+              <div class="grid grid--2">
+                <label class="field">
+                  <span class="field__label">Largura (mm)</span>
+                  <input id="inpWmm" class="field__input" type="number" min="10" step="0.1" value="100" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Altura (mm)</span>
+                  <input id="inpHmm" class="field__input" type="number" min="10" step="0.1" value="35" />
+                </label>
+              </div>
+              <div class="panel__hint">Na janela de impressão, use escala 100% e desative “Ajustar à página”.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel__section is-open">
+          <button class="panel__title" type="button">Dados da Etiqueta</button>
+          <div class="panel__content">
+            <div class="panel__contentInner">
+              <div class="grid grid--2">
+                <label class="field">
+                  <span class="field__label">Código/EAN</span>
+                  <input id="inpEan" class="field__input" type="text" inputmode="numeric" autocomplete="off" placeholder="Ex: 7891234567890" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Pack</span>
+                  <input id="inpQuantidade" class="field__input" type="number" min="0" step="1" inputmode="numeric" autocomplete="off" placeholder="Ex: 40" />
+                </label>
+              </div>
+              <label class="field">
+                <span class="field__label">Descrição</span>
+                <input id="inpDescricao" class="field__input" type="text" inputmode="latin" autocomplete="off" placeholder="Ex: LINHA FFILOTEX 36 5000M 100%PES TINTO" />
+              </label>
+              <div class="grid grid--2">
+                <label class="field">
+                  <span class="field__label">Data/Hora</span>
+                  <input id="inpDataHora" class="field__input" type="text" inputmode="latin" autocomplete="off" placeholder="dd/mm/aaaa hh:mm:ss" />
+                </label>
+                <label class="field field--inline">
+                  <span class="field__label">Usar data/hora atual</span>
+                  <input id="chkNow" type="checkbox" checked />
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel__section">
+          <button class="panel__title" type="button">Cadastro de Produtos</button>
+          <div class="panel__content">
+            <div class="panel__contentInner">
+              <div class="panel__hint">Salva localmente no navegador (localStorage).</div>
+              <div class="grid grid--2">
+                <button id="btnSaveProduto" class="btn btn--primary" type="button">Salvar / Atualizar</button>
+                <button id="btnNovoProduto" class="btn btn--ghost" type="button">Novo</button>
+              </div>
+              <div class="grid grid--2">
+                <label class="field">
+                  <span class="field__label">Produto (chave)</span>
+                  <input id="inpCodigoCad" class="field__input" type="text" inputmode="latin" autocomplete="off" placeholder="Ex: LH061" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Cor (chave)</span>
+                  <input id="inpCorCad" class="field__input" type="text" inputmode="latin" autocomplete="off" placeholder="Ex: 102" />
+                </label>
+              </div>
+              <label class="field">
+                <span class="field__label">Descrição</span>
+                <input id="inpDescricaoCad" class="field__input" type="text" inputmode="latin" autocomplete="off" />
+              </label>
+              <div class="grid grid--2">
+                <label class="field">
+                  <span class="field__label">EAN</span>
+                  <input id="inpEanCad" class="field__input" type="text" inputmode="numeric" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Quantidade padrão</span>
+                  <input id="inpQtdCad" class="field__input" type="number" min="0" step="1" inputmode="numeric" autocomplete="off" />
+                </label>
+              </div>
+              <div id="cadStatus" class="status status--muted"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel__section">
+          <button class="panel__title" type="button">Importar / Exportar Cadastro</button>
+          <div class="panel__content">
+            <div class="panel__contentInner">
+              <div class="panel__hint">CSV com colunas: ean,codigo,descricao,cor,quantidade</div>
+              <div class="grid grid--2">
+                <label class="field">
+                  <span class="field__label">Importar CSV</span>
+                  <input id="fileCsv" class="field__input" type="file" accept=".csv,text/csv" />
+                </label>
+                <button id="btnExportJson" class="btn btn--secondary" type="button">Exportar JSON</button>
+              </div>
+              <div id="importStatus" class="status status--muted"></div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <section class="preview">
+        <div class="preview__header">
+          <div class="preview__title">Pré-visualização</div>
+          <div class="preview__meta" id="previewMeta">100 × 35 mm</div>
+        </div>
+        <div class="preview__stage">
+          <div id="previewMount" class="label-mount" aria-label="Pré-visualização da etiqueta"></div>
+        </div>
+        <div class="preview__footer">
+          <div class="status status--muted" id="barcodeStatus">Código de barras: aguardando</div>
+        </div>
+
+        <div class="list">
+          <div class="list__header">
+            <div class="list__title">Produtos cadastrados</div>
+            <input id="inpFiltro" class="list__filter" type="text" placeholder="Filtrar..." autocomplete="off" />
+          </div>
+          <div class="list__tableWrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Cor</th>
+                  <th>EAN</th>
+                  <th>Qtd</th>
+                  <th>Descrição</th>
+                  <th class="table__actions">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyProdutos"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="printRoot" class="print-root" aria-hidden="true"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
