@@ -13,6 +13,7 @@
   --label-pad-y: 0.6mm;
   --label-pad-x: 1.2mm;
   --barcode-w: 43mm;
+  --barcode-offset-x: 3mm;
 }
 
 * {
@@ -357,7 +358,7 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding-right: calc(var(--barcode-w) + 1.2mm);
+  padding-right: calc(var(--barcode-w) + var(--label-pad-x) + var(--barcode-offset-x));
 }
 
 .label__pack {
@@ -428,7 +429,7 @@ body {
 
 .label__barcode {
   position: absolute;
-  right: var(--label-pad-x);
+  right: calc(var(--label-pad-x) + var(--barcode-offset-x));
   bottom: var(--label-pad-y);
   width: var(--barcode-w);
   height: auto;
