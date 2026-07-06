@@ -146,7 +146,7 @@ function renderLabelInto(mountEl, data, { idSuffix, forPrint, forPreview }) {
   mountEl.innerHTML = `
     <div class="label${forPreview ? " label--preview" : ""}" role="group" aria-label="Etiqueta Pack">
       <div class="label__left">
-        <div class="label__pack">PACK: ${escapeHtml(data.codigo)}-${escapeHtml(data.cor)}</div>
+        <div class="label__pack">PACK: ${escapeHtml(data.codigo)} - ${escapeHtml(data.cor)}</div>
         <div class="label__desc">${escapeHtml(data.descricao)}</div>
         <div class="label__dt">${escapeHtml(data.dataHora)}</div>
         <div class="label__qtd">${escapeHtml(data.quantidade)} Unidades</div>
