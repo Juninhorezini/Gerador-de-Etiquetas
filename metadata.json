@@ -1,0 +1,8 @@
+{
+  "name": "Gerador de Etiquetas Pack",
+  "description": "Cadastro, pré-visualização, impressão e exportação PDF de etiquetas do tipo Pack.",
+  "prompt": "Gerador de etiquetas Pack com pré-visualização, busca de produtos, impressão e exportação em PDF",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
