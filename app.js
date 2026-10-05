@@ -369,7 +369,31 @@ function getCurrentLabelData() {
   };
 }
 
+function clearPreview() {
+  previewMount.innerHTML = "";
+  barcodeStatus.textContent = "Código de barras: aguardando";
+}
+
 function updatePreview() {
+  const codigo = normalizeKey(inpCodigoBusca.value);
+  const cor = normalizeKey(inpCorBusca.value);
+
+  // Se Produto ou Cor foram preenchidos na busca, só exibe a pré-visualização se o produto existir no cadastro
+  if (codigo || cor) {
+    const found = codigo && cor ? findProductBySearch(products, codigo, cor) : null;
+    if (!found) {
+      clearPreview();
+      return;
+    }
+  } else {
+    // Se a busca estiver vazia, verifica se há dados manuais válidos
+    const descricao = String(inpDescricao.value ?? "").trim();
+    if (!descricao || descricao === "—") {
+      clearPreview();
+      return;
+    }
+  }
+
   const data = getCurrentLabelData();
   renderLabelInto(previewMount, data, { idSuffix: "preview", forPrint: false, forPreview: true });
   fitPreviewToStage();
@@ -476,12 +500,17 @@ function upsertProductFromCadastro() {
   saveProducts(products);
   renderProductsTable();
   setStatus(cadStatus, "ok", idx >= 0 ? "Produto atualizado com sucesso." : "Produto cadastrado com sucesso.");
+  if (normalizeKey(inpCodigoBusca.value) === codigo && normalizeKey(inpCorBusca.value) === cor) {
+    handleSearchApply();
+  }
 }
 
 function handleSearchApply() {
   const codigo = normalizeKey(inpCodigoBusca.value);
   const cor = normalizeKey(inpCorBusca.value);
   if (!codigo || !cor) {
+    clearLabelInputs(true);
+    clearPreview();
     setStatus(searchStatus, "muted", "Digite Produto e Cor para localizar no cadastro (ou preencha manualmente).");
     return;
   }
@@ -489,8 +518,11 @@ function handleSearchApply() {
   if (found) {
     applyProductToLabelInputs(found);
     setStatus(searchStatus, "ok", `Encontrado no cadastro: ${found.codigo} | ${found.cor}`);
+    updatePreview();
   } else {
-    setStatus(searchStatus, "warn", "Não encontrado no cadastro. Preencha os dados manualmente ou cadastre.");
+    clearLabelInputs(true);
+    clearPreview();
+    setStatus(searchStatus, "warn", "Não encontrado no cadastro. Produto não cadastrado.");
   }
 }
 
@@ -550,7 +582,7 @@ function updateSizeFromPreset() {
 
 function buildPrintArea() {
   const { widthMm, heightMm, qty } = getPrintSettings();
-  if (!qty) {
+  if (!qty || !canPrintOrExport()) {
     printRoot.replaceChildren();
     printRoot.removeAttribute("data-label-count");
     return;
@@ -571,13 +603,19 @@ function buildPrintArea() {
 }
 
 function canPrintOrExport() {
+  const codigo = normalizeKey(inpCodigoBusca.value);
+  const cor = normalizeKey(inpCorBusca.value);
+  if (codigo || cor) {
+    const found = codigo && cor ? findProductBySearch(products, codigo, cor) : null;
+    if (!found) return false;
+  }
   const data = getCurrentLabelData();
   return data.codigo !== "—" && data.cor !== "—" && data.descricao !== "—";
 }
 
 function printLabels() {
   if (!canPrintOrExport()) {
-    setStatus(searchStatus, "err", "Preencha os dados mínimos (Produto, Cor e Descrição) antes de imprimir.");
+    setStatus(searchStatus, "err", "Produto não cadastrado ou dados incompletos. Selecione um produto válido antes de imprimir.");
     return;
   }
   const qty = validatePrintQty({ report: true });
@@ -589,7 +627,7 @@ function printLabels() {
 
 async function exportPdf() {
   if (!canPrintOrExport()) {
-    setStatus(searchStatus, "err", "Preencha os dados mínimos (Produto, Cor e Descrição) antes de exportar.");
+    setStatus(searchStatus, "err", "Produto não cadastrado ou dados incompletos. Selecione um produto válido antes de exportar.");
     return;
   }
 
@@ -1204,8 +1242,6 @@ function hookLiveInputs(el) {
   el.addEventListener("input", () => updatePreview());
 }
 
-hookLiveInputs(inpCodigoBusca);
-hookLiveInputs(inpCorBusca);
 hookLiveInputs(inpEan);
 hookLiveInputs(inpQuantidade);
 hookLiveInputs(inpDescricao);
