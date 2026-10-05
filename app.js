@@ -1,5 +1,6 @@
 const STORAGE_KEY_PRODUCTS = "packLabel.products.v1";
 const STORAGE_KEY_SETTINGS = "packLabel.settings.v1";
+const STORAGE_KEY_SYNC_META = "packLabel.syncMeta.v1";
 
 function normalizeKey(value) {
   return String(value ?? "")
@@ -114,12 +115,136 @@ function saveSettings(settings) {
   localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
 }
 
+function loadSyncMeta() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SYNC_META);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveSyncMeta(meta) {
+  localStorage.setItem(STORAGE_KEY_SYNC_META, JSON.stringify(meta));
+}
+
 function buildProductKey(codigo, cor) {
   return `${normalizeKey(codigo)}|${normalizeKey(cor)}`;
 }
 
 function uniqId(prefix = "id") {
   return `${prefix}-${Math.random().toString(16).slice(2)}-${Date.now().toString(16)}`;
+}
+
+const SHEETS_SYNC_CONFIG = Object.freeze({
+  spreadsheetId: "1CWw8zKMf1ww08gynis7qIAYFjaYJo3PYb8bghp35zYE",
+  defaultSheetName: "Packs",
+  endpointMetaName: "pack-sync-endpoint",
+  timeoutMs: 12000,
+});
+
+function normalizeProductRecord(record) {
+  if (!record || typeof record !== "object") return null;
+  const codigo = normalizeKey(record.codigo ?? record.CODIGO ?? record.produto ?? record.PRODUTO ?? record.sku ?? record.SKU);
+  const cor = normalizeKey(record.cor ?? record.COR);
+  if (!codigo || !cor) return null;
+  return {
+    ean: String(record.ean ?? record.EAN ?? "").trim(),
+    codigo,
+    descricao: String(record.descricao ?? record.DESCRICAO ?? "").trim(),
+    cor,
+    quantidade: String(record.quantidade ?? record.QUANTIDADE ?? record.qtd ?? record.QTD ?? "").trim(),
+  };
+}
+
+function areProductsEqual(a, b) {
+  return (
+    a.ean === b.ean &&
+    a.codigo === b.codigo &&
+    a.descricao === b.descricao &&
+    a.cor === b.cor &&
+    a.quantidade === b.quantidade
+  );
+}
+
+function mergeProductsByKey(baseProducts, incomingProducts) {
+  const nextProducts = baseProducts.slice();
+  const indexByKey = new Map(nextProducts.map((product, index) => [buildProductKey(product.codigo, product.cor), index]));
+  let inserted = 0;
+  let updated = 0;
+  let unchanged = 0;
+
+  for (const incoming of incomingProducts) {
+    const key = buildProductKey(incoming.codigo, incoming.cor);
+    const idx = indexByKey.get(key);
+    if (idx == null) {
+      nextProducts.push(incoming);
+      indexByKey.set(key, nextProducts.length - 1);
+      inserted++;
+      continue;
+    }
+
+    if (areProductsEqual(nextProducts[idx], incoming)) {
+      unchanged++;
+      continue;
+    }
+
+    nextProducts[idx] = incoming;
+    updated++;
+  }
+
+  return { products: nextProducts, inserted, updated, unchanged };
+}
+
+function formatSyncDateTime(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "medium",
+  }).format(date);
+}
+
+function getSheetsSyncEndpointUrl() {
+  const metaEl = document.querySelector(`meta[name="${SHEETS_SYNC_CONFIG.endpointMetaName}"]`);
+  return String(metaEl?.getAttribute("content") ?? "").trim();
+}
+
+function buildSheetsSyncUrl() {
+  const endpointUrl = getSheetsSyncEndpointUrl();
+  if (!endpointUrl) return "";
+  const url = new URL(endpointUrl, window.location.href);
+  if (!url.searchParams.has("sheet")) url.searchParams.set("sheet", SHEETS_SYNC_CONFIG.defaultSheetName);
+  if (!url.searchParams.has("spreadsheetId")) url.searchParams.set("spreadsheetId", SHEETS_SYNC_CONFIG.spreadsheetId);
+  return url.toString();
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      throw new Error("A resposta não está em JSON válido.");
+    }
+    if (!response.ok) {
+      throw new Error(data?.error || `Falha HTTP ${response.status}`);
+    }
+    return data;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function setRootLabelSize(widthMm, heightMm) {
@@ -146,7 +271,7 @@ function renderLabelInto(mountEl, data, { idSuffix, forPrint, forPreview }) {
   mountEl.innerHTML = `
     <div class="label${forPreview ? " label--preview" : ""}" role="group" aria-label="Etiqueta Pack">
       <div class="label__left">
-        <div class="label__pack">PACK: ${escapeHtml(data.codigo)}-${escapeHtml(data.cor)}</div>
+        <div class="label__pack">PACK: ${escapeHtml(data.codigo)} - ${escapeHtml(data.cor)}</div>
         <div class="label__desc">${escapeHtml(data.descricao)}</div>
         <div class="label__dt">${escapeHtml(data.dataHora)}</div>
         <div class="label__qtd">${escapeHtml(data.quantidade)} Unidades</div>
@@ -605,6 +730,64 @@ async function importCsvFile(file) {
   setStatus(importStatus, "ok", `Importação concluída: ${inserted} inseridos, ${updated} atualizados.`);
 }
 
+async function syncProductsFromSheets() {
+  try {
+    const url = buildSheetsSyncUrl();
+    if (!url) {
+      setStatus(syncStatus, "muted", "Google Sheets: configure a URL do Web App para habilitar a sincronização.");
+      return { skipped: true };
+    }
+
+    setStatus(syncStatus, "muted", "Google Sheets: sincronizando a aba Packs...");
+
+    const payload = await fetchJsonWithTimeout(url, SHEETS_SYNC_CONFIG.timeoutMs);
+    if (!payload || payload.ok === false) {
+      throw new Error(payload?.error || "Resposta inválida do Google Sheets.");
+    }
+
+    const remoteProductsRaw = Array.isArray(payload.products)
+      ? payload.products
+      : Array.isArray(payload.rows)
+        ? payload.rows
+        : [];
+    const remoteProducts = remoteProductsRaw.map((record) => normalizeProductRecord(record)).filter(Boolean);
+    const merged = mergeProductsByKey(products, remoteProducts);
+
+    if (merged.inserted || merged.updated) {
+      products = merged.products;
+      saveProducts(products);
+      renderProductsTable();
+      handleSearchApply();
+      updatePreview();
+    }
+
+    const syncedAt = new Date().toISOString();
+    saveSyncMeta({
+      lastSuccessAt: syncedAt,
+      sheetName: payload.sheetName || SHEETS_SYNC_CONFIG.defaultSheetName,
+      rows: remoteProducts.length,
+      inserted: merged.inserted,
+      updated: merged.updated,
+      unchanged: merged.unchanged,
+    });
+
+    const summary =
+      merged.inserted || merged.updated
+        ? `${merged.inserted} novos, ${merged.updated} atualizados`
+        : "nenhuma novidade encontrada";
+    setStatus(syncStatus, "ok", `Google Sheets: sincronização concluída (${summary}).`);
+    return merged;
+  } catch (error) {
+    const lastSync = loadSyncMeta();
+    const lastSyncSuffix = lastSync?.lastSuccessAt
+      ? ` Última sincronização concluída em ${formatSyncDateTime(lastSync.lastSuccessAt)}.`
+      : "";
+    setStatus(syncStatus, "warn", `Google Sheets: não foi possível sincronizar agora; usando o cadastro local.${lastSyncSuffix}`);
+    console.error("[sheets-sync]", error);
+    return null;
+  }
+}
+
 const btnPrint = document.getElementById("btnPrint");
 const btnPdf = document.getElementById("btnPdf");
 
@@ -630,6 +813,7 @@ const cadStatus = document.getElementById("cadStatus");
 const fileCsv = document.getElementById("fileCsv");
 const btnExportJson = document.getElementById("btnExportJson");
 const importStatus = document.getElementById("importStatus");
+const syncStatus = document.getElementById("syncStatus");
 
 const inpQtdPrint = document.getElementById("inpQtdPrint");
 const selTamanho = document.getElementById("selTamanho");
@@ -647,6 +831,7 @@ const tbodyProdutos = document.getElementById("tbodyProdutos");
 const printRoot = document.getElementById("printRoot");
 
 let products = loadProducts();
+const syncMeta = loadSyncMeta();
 
 const saved = loadSettings();
 if (saved?.size?.widthMm && saved?.size?.heightMm) {
@@ -661,8 +846,14 @@ updateSizeFromPreset();
 inpDataHora.value = formatNow();
 setStatus(cadStatus, "muted", "Cadastre produtos para facilitar a busca.");
 setStatus(importStatus, "muted", "Importe um CSV ou exporte o cadastro atual.");
+if (syncMeta?.lastSuccessAt) {
+  setStatus(syncStatus, "muted", `Google Sheets: último sync em ${formatSyncDateTime(syncMeta.lastSuccessAt)}.`);
+} else {
+  setStatus(syncStatus, "muted", "Google Sheets: sincronização não configurada.");
+}
 renderProductsTable();
 updatePreview();
+void syncProductsFromSheets();
 
 function setPanelOpen(sectionEl, open) {
   const titleEl = sectionEl.querySelector(":scope > .panel__title");
